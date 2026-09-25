@@ -39,3 +39,4 @@ Temporary Items
 
 # Local agent state
 .claude/settings.local.json
+.cpcache/
