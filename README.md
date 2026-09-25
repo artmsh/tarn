@@ -4,22 +4,22 @@
 ```bash
 curl -sLO https://github.com/lerocha/chinook-database/releases/download/v1.4.5/Chinook_Sqlite.sqlite
 mv Chinook_Sqlite.sqlite chinook.sqlite
-clojure -M:run
+clojure -M:run2
 ```
 
 will print
 
 ```
-artists: 275 albums: 347 tracks: 3503
-invoice lines: 2240 customers: 59 invoices: 412
 brazilian invoices: 35
 lines bought in Brazil: 190
 [127 [Admirável Gado Novo Cássia Eller]]
 [128 [Mis Penas Lloraba Yo (Ao Vivo) Soy Gitano (Tangos) Cássia Eller]]
 [129 [Drifter Deep Purple]]
 distinct artists: 60
-top: ([Os Paralamas Do Sucesso 11] [Pearl Jam 11] [Chico Science & Nação Zumbi 9])
-100 runs: 3.45 ms each
+tracks on Brazilian Music: 39
+first 2 pairs, reduced early: [[127 [Admirável Gado Novo Cássia Eller]] [128 [Mis Penas Lloraba Yo (Ao Vivo) Soy Gitano (Tangos) Cássia Eller]]]
+part 1, seqs + indexes: 2.84 ms, 11,991,751 bytes allocated per run
+part 2, drive + probe  : 0.15 ms, 396,787 bytes allocated per run
 ```
 
 ## Sources
