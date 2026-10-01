@@ -4,7 +4,8 @@
 __MACOSX/
 .AppleDouble
 .LSOverride
-Icon[]
+Icon[
+]
 
 # Thumbnails
 ._*
@@ -41,3 +42,4 @@ Temporary Items
 .claude/settings.local.json
 .cpcache/
 *.sqlite
+.clj-kondo/

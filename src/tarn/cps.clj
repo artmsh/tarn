@@ -82,4 +82,24 @@
 
 (defn size [q] (reduce (fn [n _] (inc n)) 0 q))
 
+;; ---- Part 3: turning around, grouping, folding ---------------------------
 
+(defn inv
+  "Flip a relation. Drive-only: you can stream it, you can't probe it."
+  [q]
+  (->Query (fn [k] (drive q (fn [x y] (k y x))))
+           (fn [_ _] (throw (ex-info "inv is drive-only; use (index (inv q)) to probe it" {})))
+           (fn [_] (throw (ex-info "inv is drive-only; use (index (inv q)) to member it" {})))))
+
+(defn index
+  "Materialize any query into a many, once. The probe-able form of inv."
+  [q]
+  (many (into [] q)))
+
+(defn group
+  "r.group_by(t): drive the set r, probe the key relation t at each row,
+   emit (key, row). Drive-only, like inv."
+  [r t]
+  (->Query (fn [k] (drive r (fn [_ x] (probe t x (fn [g] (k g x))))))
+           (fn [_ _] (throw (ex-info "group is drive-only; fold it first" {})))
+           (fn [_] (throw (ex-info "group is drive-only; fold it first" {})))))
