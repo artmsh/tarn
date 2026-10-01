@@ -1,9 +1,10 @@
 (ns tarn.cps
   "Part 2: the same four operators in continuation-passing style.
-   A query no longer returns pairs. It is driven, or probed.")
+   A query no longer returns pairs. It is driven, or probed."
+  (:import (clojure.lang IReduceInit)))
 
 (defrecord Query [drive probe member]
-  clojure.lang.IReduceInit
+  IReduceInit
   (reduce [_ f init]
     (let [acc (volatile! init)]
       (drive (fn [x y]
@@ -103,3 +104,30 @@
   (->Query (fn [k] (drive r (fn [_ x] (probe t x (fn [g] (k g x))))))
            (fn [_ _] (throw (ex-info "group is drive-only; fold it first" {})))
            (fn [_] (throw (ex-info "group is drive-only; fold it first" {})))))
+
+(defn from-map
+  "key -> value, backed by a map. What every fold returns."
+  [m]
+  (->Query (fn [k] (reduce-kv (fn [_ x y] (k x y) nil) nil m))
+           (fn [x k] (when-some [v (find m x)] (k (val v))))
+           (fn [x] (contains? m x))))
+
+(defn fold
+  "Hash aggregate: one map entry per key, op folds the values in."
+  [q init op]
+  (from-map
+   (persistent!
+    (reduce (fn [m [x y]] (assoc! m x (op (get m x init) y)))
+            (transient {}) q))))
+
+(defn gather
+  "key -> vector of every value. fold with conj."
+  [q]
+  (fold q [] conj))
+
+(defn fmap
+  "r.map(f): apply f to every value. Named fmap because core owns map."
+  [r f]
+  (->Query (fn [k] (drive r (fn [x y] (k x (f y)))))
+           (fn [x k] (probe r x (fn [y] (k (f y)))))
+           (:member r)))

@@ -43,3 +43,6 @@ Temporary Items
 .cpcache/
 *.sqlite
 .clj-kondo/
+.lsp/
+.nrepl-port
+tarn.iml
