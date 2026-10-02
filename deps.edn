@@ -5,4 +5,6 @@
  :aliases {:run {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
                  :main-opts ["-m" "tarn.part1"]}
            :run2 {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
-                  :main-opts ["-m" "tarn.part2"]}}}
+                  :main-opts ["-m" "tarn.part2"]}
+           :run3 {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+                  :main-opts ["-m" "tarn.part3"]}}}
