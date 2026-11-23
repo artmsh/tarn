@@ -1,5 +1,5 @@
 (ns tarn.part3
-  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count cmin]]
+  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count cmin sorted-fold sort-by-key from-pairs-sorted]]
             [tarn.part2 :refer [artist line artist-name album-artist track-name track-album
                                 country invoice-customer line-invoice line-track brazilian bench]]
             [tarn.chinook :as ch]))
@@ -30,6 +30,10 @@
   (-> invoice (group (s invoice-customer country)) (s invoice-date)
       (fold nil (fn [m d] (if (nil? m) d (cmin m d))))
       (filt #(pos? (compare % cutoff)))))
+
+(def revenue-stream
+  (-> invoice (group (s invoice-customer country)) (s invoice-total)))
+(def revenue-sorted (sort-by-key revenue-stream))   ; sorted once, at load
 
 (def artist-albums (index (inv album-artist)))
 
@@ -62,4 +66,12 @@
                                            {:builder-fn next.jdbc.result-set/as-unqualified-lower-maps}))]
       (println "first order >" cutoff ":" (count got) "countries, match sqlite:" (= got oracle) (into (sorted-map) got))))
   (bench "first-order-after, fold cmin " #(size (first-order-after "2010-01-01")))
-  (bench "same via gather + fmap min   " #(size (-> invoice (group (s invoice-customer country)) (s invoice-date) (gather) (fmap (fn [ds] (reduce cmin ds))) (filt (fn [d] (pos? (compare d "2010-01-01"))))))))
+  (bench "same via gather + fmap min   " #(size (-> invoice (group (s invoice-customer country)) (s invoice-date) (gather) (fmap (fn [ds] (reduce cmin ds))) (filt (fn [d] (pos? (compare d "2010-01-01")))))))
+  (let [h (into {} revenue) sf (into {} (sorted-fold revenue-sorted 0.0 +))]
+    (println "sorted-fold == fold (same keys, sums within 1e-9):" (and (= (set (keys h)) (set (keys sf)))
+                                                                         (every? #(< (Math/abs (- (h %) (sf %))) 1e-9) (keys h))))
+    (println "sorted-fold first 3 keys:" (map first (take 3 (into [] (sorted-fold revenue-sorted 0.0 +))))))
+  (bench "hash fold, per call          " #(size (fold revenue-stream 0.0 +)))
+  (bench "sorted-fold, presorted input " #(size (sorted-fold revenue-sorted 0.0 +)))
+  (bench "sort-by-key + sorted-fold    " #(size (sorted-fold (sort-by-key revenue-stream) 0.0 +)))
+  (bench "sort-by-key alone            " #(size (sort-by-key revenue-stream))))

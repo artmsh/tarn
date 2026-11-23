@@ -175,3 +175,39 @@
    clojure.core/min is numeric and throws on strings."
   [a b]
   (if (neg? (compare a b)) a b))
+
+;; ---- Part 3, exercise 3: fold without a map, on a key-sorted stream ------
+
+(defn from-pairs-sorted
+  "A drive-only leaf over a vector of [k v] pairs already in the order you want."
+  [pairs]
+  (->Query (fn [k] (run! (fn [[x y]] (k x y)) pairs))
+           (fn [_ _] (throw (ex-info "drive-only" {})))
+           (fn [_] (throw (ex-info "drive-only" {})))))
+
+(defn sort-by-key
+  "Materialize q and sort it by key (stable, `compare`; nil sorts first).
+   This is the price of admission for sorted-fold."
+  [q]
+  (from-pairs-sorted (vec (sort-by first (into [] q)))))
+
+(defn sorted-fold
+  "fold for a stream that arrives sorted by key: no map, one running
+   accumulator, emit [key acc] whenever the key changes. Output is a
+   drive-only relation in key order (a map would be needed to probe it)."
+  [q init op]
+  (let [out (volatile! (transient []))
+        cur (volatile! ::none)
+        acc (volatile! init)]
+    (reduce (fn [_ [x y]]
+              (if (= x @cur)
+                (vswap! acc op y)
+                (do (when-not (identical? @cur ::none)
+                      (vswap! out conj! [@cur @acc]))
+                    (vreset! cur x)
+                    (vreset! acc (op init y))))
+              nil)
+            nil q)
+    (when-not (identical? @cur ::none)
+      (vswap! out conj! [@cur @acc]))
+    (from-pairs-sorted (persistent! @out))))
