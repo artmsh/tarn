@@ -159,3 +159,11 @@
   (->Query (fn [k] (drive r (fn [x y] (k x (f y)))))
            (fn [x k] (probe r x (fn [y] (k (f y)))))
            (:member r)))
+
+;; ---- Part 3, exercise 1: count(distinct) ---------------------------------
+
+(defn distinct-count
+  "Prela's count_distinct, built on gather: per key, sort the values, drop
+   adjacent duplicates, count."
+  [q]
+  (fmap (gather q) (fn [vs] (count (dedupe (sort vs))))))

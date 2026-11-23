@@ -1,5 +1,5 @@
 (ns tarn.part3
-  (:require [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap]]
+  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count]]
             [tarn.part2 :refer [artist line artist-name album-artist track-name track-album
                                 country invoice-customer line-invoice line-track brazilian bench]]
             [tarn.chinook :as ch]))
@@ -19,6 +19,9 @@
 (def revenue
   (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +)))
 
+(def distinct-tracks-per-country
+  (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count)))
+
 (def artist-albums (index (inv album-artist)))
 
 (defn -main [& _]
@@ -33,4 +36,11 @@
   (println "nil group key:" (into [] (-> (ids [10 11 12]) (group (column [0 nil 0])) (gather))))
   (bench "per-artist, materialized once" #(size per-artist))
   (bench "per-artist, folded per call  " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n))))))
-  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +)))))
+  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +))))
+  (let [got (into {} distinct-tracks-per-country)
+        oracle (into {} (map (juxt :country :n))
+                     (next.jdbc/execute! ch/ds ["select c.Country as country, count(distinct il.TrackId) as n from InvoiceLine il join Invoice i using(InvoiceId) join Customer c using(CustomerId) group by c.Country"]
+                                         {:builder-fn next.jdbc.result-set/as-unqualified-lower-maps}))]
+    (doseq [c ["USA" "Brazil" "Germany"]] (println "distinct tracks bought," c (got c) "sqlite" (oracle c)))
+    (println "all countries match sqlite:" (= got oracle) (count got)))
+  (bench "distinct-count per call      " #(size (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count)))))
