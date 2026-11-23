@@ -1,6 +1,8 @@
 (ns tarn.part4
   (:require [tarn.ast :refer [s both eq ge where group fold]]
-            [tarn.sql :refer [to-sql]]
+            [tarn.sql :as sql :refer [to-sql]]
+            [tarn.cse :as cse]
+            [clojure.string :as str]
             [tarn.run :refer [run]]
             [tarn.cps :as cps]
             [tarn.part2 :as p2]
@@ -81,4 +83,47 @@
   (let [q (to-sql schema bought-in-brazil)]
     (p2/bench "sqlite, generated sql   " #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
   (let [q ["select il.InvoiceLineId, t.Name, ar.Name from InvoiceLine il join Invoice i on il.InvoiceId=i.InvoiceId join Customer c on i.CustomerId=c.CustomerId join Track t on il.TrackId=t.TrackId join Album al on t.AlbumId=al.AlbumId join Artist ar on al.ArtistId=ar.ArtistId where c.Country='Brazil'"]]
-    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))
+    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
+  (println "--- ex4-4: cse")
+  (let [forest {:bought-in-brazil bought-in-brazil :big-in-brazil big-in-brazil :revenue revenue}
+        show (fn [m] (doseq [[t locs] m] (println "   " (pr-str t) "x" (count locs) (mapv (fn [l] (vec (take 2 l))) locs))))]
+    (doseq [[nm t] forest]
+      (let [r (cse/cse {nm t})]
+        (println nm "equal subtrees:" (count (:equal-subtrees r)) "| repeated leaves:" (pr-str (keys (:equal-leaves r)))
+                 "| shared left operands:" (pr-str (keys (:shared-left r))))
+        (show (:shared-left r))))
+    (let [r (cse/cse forest)]
+      (println "across all three: equal subtrees")
+      (show (:equal-subtrees r)))
+    (let [r (cse/cse {:dup [:both brazilian brazilian]})]
+      (println "synthetic [:both brazilian brazilian]:")
+      (show (:equal-subtrees r))))
+  (let [q (to-sql schema bought-in-brazil)
+        rep (cse/repeated-sql (first q))]
+    (println "repeated (SELECT ...) texts in the generated SQL:" (count rep))
+    (doseq [[t n] rep] (println "   x" n (count t) "chars:" t)))
+  (println "EXPLAIN QUERY PLAN, generated SQL (IN form is Part 4's own; this branch has it)")
+  (let [q (to-sql schema bought-in-brazil)]
+    (doseq [r (jdbc/execute! ch/ds (into [(str "EXPLAIN QUERY PLAN " (first q))] (rest q)) {:builder-fn rs/as-unqualified-lower-maps})]
+      (println (format "  %3d %3d %s" (:id r) (:parent r) (:detail r)))))
+  (let [lt "(SELECT InvoiceLineId AS x, TrackId AS v1 FROM InvoiceLine)"
+        base (first (to-sql schema bought-in-brazil))
+        n (count (re-seq (re-pattern (java.util.regex.Pattern/quote lt)) base))
+        with (fn [m] (str "WITH lt AS " m " (SELECT InvoiceLineId AS x, TrackId AS v1 FROM InvoiceLine) "
+                          (str/replace base lt "lt")))
+        run1 (fn [sql] (jdbc/execute! ch/ds [sql "Brazil"] {:builder-fn rs/as-arrays}))]
+    (println "line-track subquery occurrences in the SQL text:" n)
+    (doseq [[nm sqlx] [["as generated" base] ["CTE MATERIALIZED" (with "MATERIALIZED")] ["CTE NOT MATERIALIZED" (with "NOT MATERIALIZED")]]]
+      (println (format "%-22s rows %d (header excluded) same-as-generated %s" nm (dec (count (run1 sqlx)))
+                       (= (set (map vec (rest (run1 base)))) (set (map vec (rest (run1 sqlx)))))))
+      (when-not (= nm "as generated")
+        (println "  plan:" (str/join " | " (map :detail (jdbc/execute! ch/ds [(str "EXPLAIN QUERY PLAN " sqlx) "Brazil"] {:builder-fn rs/as-unqualified-lower-maps})))))
+      (p2/bench (format "%-22s" nm) #(count (run1 sqlx)))))
+  ;; closures: how many times does the shared relation get probed/driven?
+  (let [n (atom 0)
+        counted (let [q (get rels :line-track)]
+                  (cps/->Query (fn [k] (swap! n inc) (cps/drive q k))
+                               (fn [x k] (swap! n inc) (cps/probe q x k))
+                               (:member q)))]
+    (cps/size (run schema (assoc rels :line-track counted) ids bought-in-brazil))
+    (println "closures: :line-track entered" @n "times in one run of the Brazil query: 190 rows x 2 branches, each an O(1) array lookup")))
