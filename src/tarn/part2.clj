@@ -1,5 +1,6 @@
 (ns tarn.part2
-  (:require [tarn.cps :refer [s both eq where column ids many size]]
+  (:require [tarn.cps :as cps :refer [s both eq where column ids many size from-pairs]]
+            [tarn.core :as core]
             [tarn.chinook :as ch]
             [tarn.part1 :as p1]))
 
@@ -36,6 +37,20 @@
       (s (both (-> line-track (s track-name))
                (-> line-track (s track-album) (s album-artist) (s artist-name))))))
 
+;; Same inputs through Part 1's core/where and Part 2's cps/where.
+;; Inputs are Part 1 relations (seqs of pairs); the Part 2 side wraps each in from-pairs.
+(defn check-where-agrees []
+  (let [brazil (core/eq (core/s ch/invoice-customer ch/country) "Brazil")]
+    (doseq [[label r t] [["line-invoice | brazilian"     ch/line-invoice brazil]
+                         ["line-track | track-album"     ch/line-track ch/track-album]
+                         ["playlist-tracks | line-track" ch/playlist-tracks ch/line-track]
+                         ["track-album | empty"          ch/track-album []]]]
+      (let [p1-res (core/where r t)
+            p2-res (into [] (where (from-pairs r) (from-pairs t)))]
+        (assert (= (set p1-res) (set p2-res)) label)
+        (assert (= (count p1-res) (count p2-res)) label)
+        (println (format "where agrees: %-30s %5d pairs (set =, count =)" label (count p1-res)))))))
+
 (def ^:private mx (java.lang.management.ManagementFactory/getThreadMXBean))
 (defn- allocated [] (.getThreadAllocatedBytes ^com.sun.management.ThreadMXBean mx (.getId (Thread/currentThread))))
 
@@ -48,6 +63,7 @@
                      (quot (- (allocated) a0) 100)))))
 
 (defn -main [& _]
+  (check-where-agrees)
   (println "brazilian invoices:" (size brazilian))
   (let [res (into [] bought-in-brazil)]
     (println "lines bought in Brazil:" (count res))
