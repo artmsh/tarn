@@ -1,5 +1,5 @@
 (ns tarn.part1
-  (:require [tarn.core :refer [s both eq where index inv]]
+  (:require [tarn.core :refer [s both eq where index inv filt]]
             [tarn.chinook :refer :all]))
 
 (defn brazilian []
@@ -14,8 +14,13 @@
 (defn artists-with-albums []
   (-> artist (where (inv album-artist))))
 
+(defn long-track-lines []
+  (-> line
+      (where (-> line-track (s (filt track-milliseconds #(> % 600000)))))))
+
 (defn -main [& _]
   (println "artists with at least one album:" (count (artists-with-albums)))
+  (println "lines for tracks > 10 min:" (count (long-track-lines)))
   (println "artists:" (count artist) "albums:" (count album) "tracks:" (count track))
   (println "invoice lines:" (count line) "customers:" (count customer) "invoices:" (count invoice))
   (println "brazilian invoices:" (count (brazilian)))

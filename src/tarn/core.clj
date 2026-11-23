@@ -35,3 +35,8 @@
   "Converse: swap the two columns. x->y becomes y->x."
   [r]
   (map (fn [[x y]] [y x]) r))
+
+(defn filt
+  "General predicate: keep pairs whose value satisfies pred."
+  [r pred]
+  (filter (fn [[_ y]] (pred y)) r))
