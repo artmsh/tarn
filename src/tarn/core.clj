@@ -30,3 +30,8 @@
   [r t]
   (let [keys (into #{} (map first) t)]
     (filter (fn [[_ y]] (contains? keys y)) r)))
+
+(defn filt
+  "General predicate: keep pairs whose value satisfies pred."
+  [r pred]
+  (filter (fn [[_ y]] (pred y)) r))

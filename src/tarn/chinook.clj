@@ -43,6 +43,7 @@
 (def album-title  (column album-rows :title))
 (def album-artist (fk album-rows :artistid artist))
 (def track-name   (column track-rows :name))
+(def track-milliseconds (column track-rows :milliseconds))
 (def track-album  (fk track-rows :albumid album))
 (def country      (column customer-rows :country))
 (def invoice-customer (fk invoice-rows :customerid customer))
