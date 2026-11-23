@@ -1,5 +1,5 @@
 (ns tarn.part2
-  (:require [tarn.cps :as cps :refer [s both eq where column ids many size from-pairs]]
+  (:require [tarn.cps :as cps :refer [s both eq filt where column ids many size from-pairs exists?]]
             [tarn.core :as core]
             [tarn.chinook :as ch]
             [tarn.part1 :as p1]))
@@ -51,6 +51,20 @@
         (assert (= (count p1-res) (count p2-res)) label)
         (println (format "where agrees: %-30s %5d pairs (set =, count =)" label (count p1-res)))))))
 
+;; ex2-4: did anyone in Brazil ever buy a Deep Purple track?
+(defn by-artist [q artist] (filt q (fn [[_ a]] (= a artist))))
+
+(defn- counting
+  "Wrap a leaf's drive with a counter: how many rows the scan visited."
+  [q n]
+  (assoc q :drive (fn [k] ((:drive q) (fn [x y] (swap! n inc) (k x y))))))
+
+(defn bought-in-brazil-via [line*]
+  (-> line*
+      (where (-> line-invoice (s brazilian)))
+      (s (both (-> line-track (s track-name))
+               (-> line-track (s track-album) (s album-artist) (s artist-name))))))
+
 (def ^:private mx (java.lang.management.ManagementFactory/getThreadMXBean))
 (defn- allocated [] (.getThreadAllocatedBytes ^com.sun.management.ThreadMXBean mx (.getId (Thread/currentThread))))
 
@@ -62,8 +76,18 @@
                      (/ (- (System/nanoTime) t0) 100 1e6)
                      (quot (- (allocated) a0) 100)))))
 
+(defn deep-purple-demo []
+  (let [n (atom 0)
+        q (by-artist (bought-in-brazil-via (counting line n)) "Deep Purple")]
+    (reset! n 0) (println "size    :" (size q) "rows -> lines scanned:" @n)
+    (reset! n 0) (println "exists? :" (exists? q) "-> lines scanned:" @n)
+    (println "absent artist (expect false):" (exists? (by-artist bought-in-brazil "Nobody Band")))
+    (bench "size (Deep Purple)   " #(size (by-artist bought-in-brazil "Deep Purple")))
+    (bench "exists? (Deep Purple)" #(exists? (by-artist bought-in-brazil "Deep Purple")))))
+
 (defn -main [& _]
   (check-where-agrees)
+  (deep-purple-demo)
   (println "brazilian invoices:" (size brazilian))
   (let [res (into [] bought-in-brazil)]
     (println "lines bought in Brazil:" (count res))
