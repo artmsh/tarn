@@ -1,5 +1,5 @@
 (ns tarn.part3
-  (:require [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap]]
+  (:require [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap dense-fold]]
             [tarn.part2 :refer [artist line artist-name album-artist track-name track-album
                                 country invoice-customer line-invoice line-track brazilian bench]]
             [tarn.chinook :as ch]))
@@ -12,6 +12,9 @@
 
 (def per-artist
   (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n)))))
+
+(def per-artist-dense
+  (-> brazil-lines (group line-artist) (dense-fold (count ch/artist-rows) 0 (fn [n _] (inc n)))))
 
 (def big-in-brazil
   (-> per-artist (filt #(>= % 9)) (both artist-name)))
@@ -33,4 +36,7 @@
   (println "nil group key:" (into [] (-> (ids [10 11 12]) (group (column [0 nil 0])) (gather))))
   (bench "per-artist, materialized once" #(size per-artist))
   (bench "per-artist, folded per call  " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n))))))
-  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +)))))
+  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +))))
+  (println "dense == map fold:" (= (into {} per-artist) (into {} per-artist-dense)) (size per-artist-dense) "groups of" (count ch/artist-rows) "slots")
+  (bench "per-artist, dense per call   " #(size (-> brazil-lines (group line-artist) (dense-fold 275 0 (fn [n _] (inc n))))))
+  (bench "per-artist, map per call     " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n)))))))

@@ -131,3 +131,30 @@
   (->Query (fn [k] (drive r (fn [x y] (k x (f y)))))
            (fn [x k] (probe r x (fn [y] (k (f y)))))
            (:member r)))
+
+;; ---- Part 3, exercise 4: dense_fold --------------------------------------
+
+(defn from-dense
+  "row# -> value over an Object[] where ::none marks a row with no group.
+   Behaves like from-map: only touched slots exist."
+  [^objects arr]
+  (let [n (alength arr)
+        at (fn [x] (when (and (int? x) (< -1 x n))
+                     (let [v (aget arr (int x))] (when-not (identical? v ::none) v))))]
+    (->Query (fn [k] (dotimes [i n] (let [v (aget arr i)] (when-not (identical? v ::none) (k i v)))))
+             (fn [x k] (when-some [v (at x)] (k v)))
+             (fn [x] (some? (at x))))))
+
+(defn dense-fold
+  "fold into an array indexed by row number instead of a map. Keys must be
+   row numbers in [0, n): a nil or out-of-range key throws. Slots never
+   touched stay absent, so the result has the same entries a map fold has."
+  [q n init op]
+  (let [arr (object-array n)]
+    (java.util.Arrays/fill arr ::none)
+    (reduce (fn [_ [x y]]
+              (let [i (int x) cur (aget arr i)]
+                (aset arr i (op (if (identical? cur ::none) init cur) y))
+                nil))
+            nil q)
+    (from-dense arr)))
