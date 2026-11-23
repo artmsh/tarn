@@ -22,13 +22,24 @@
 (def pl-factored (-> pl-as-written reassoc factor))
 
 ;; five more leaves: two junction-shaped, one backwards, one identity column
-(def schema
+(def base-schema
   (merge p4/schema
          {:playlist        {:table "Playlist"      :key "PlaylistId" :val "PlaylistId" :entry true}
           :playlist-name   {:table "Playlist"      :key "PlaylistId" :val "Name"}
           :playlist-tracks {:table "PlaylistTrack" :key "PlaylistId" :val "TrackId" :ref "Track"}
           :invoice-lines   {:table "InvoiceLine"   :key "InvoiceId"  :val "InvoiceLineId" :ref "InvoiceLine"}
           :line-id         {:table "InvoiceLine"   :key "InvoiceLineId" :val "InvoiceLineId"}}))
+
+(def pk-leaves
+  "Leaves whose key column is the table's primary key: one row per key. The
+   printer may only merge two leaves of one table into a single scan when this
+   holds, otherwise the join on x pairs every row of a key with every other."
+  #{:line :invoice :line-invoice :line-track :invoice-customer :invoice-total :country
+    :track-name :track-album :album-artist :artist-name
+    :playlist :playlist-name :line-id})
+
+(def schema
+  (into {} (map (fn [[k v]] [k (cond-> v (pk-leaves k) (assoc :pk true))])) base-schema))
 
 (def rels
   (merge p4/rels
@@ -59,6 +70,18 @@
 (defn sql-rows-of [tree]
   (into #{} (map (fn [r] (vec (take-last 3 r)))) (sql-rows tree)))
 
+(defn plan
+  "EXPLAIN QUERY PLAN for a tree, as the detail strings."
+  [tree]
+  (let [q (to-sql schema tree)]
+    (mapv :detail (jdbc/execute! ch/ds (into [(str "EXPLAIN QUERY PLAN " (first q))] (rest q))
+                                 {:builder-fn rs/as-unqualified-lower-maps}))))
+
+(defn reads
+  "How many plan steps touch table (SCAN or SEARCH)."
+  [table tree]
+  (count (filter #(re-find (re-pattern (str "^(SCAN|SEARCH) " table "\\b")) %) (plan tree))))
+
 (defn -main [& _]
   (println "as written:" (nodes as-written) "nodes, factored:" (nodes factored) "nodes, flipped:" (nodes flipped) "nodes")
   (println "factored tree:" factored)
@@ -69,6 +92,8 @@
              "factored:" (cps/size (run schema rels ids pl-factored))
              "| sql:" (sql-count pl-as-written) (sql-count pl-factored)))
   (println "flipped, same rows:" (= (rows-of as-written) (rows-of flipped)) (= (sql-rows-of as-written) (sql-rows-of flipped)))
+  (println "plan steps reading Track, as written / factored / flipped:"
+           (reads "Track" as-written) (reads "Track" factored) (reads "Track" flipped))
   (doseq [[label tree] [["as written" as-written] ["factored  " factored] ["flipped   " flipped]]]
     (let [q (to-sql schema tree)]
       (spit (str "generated-" (.replace (.trim ^String label) " " "-") ".sql") (str (.replace ^String (first q) "?" "'Brazil'") ";\n"))
