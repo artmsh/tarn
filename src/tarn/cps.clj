@@ -48,7 +48,7 @@
   "id -> row# for ids 1..n in row order: row# = id - 1. No map, nothing to build."
   [n]
   (let [in? (fn [x] (and (int? x) (<= 1 x n)))]
-    (->Query (fn [k] (dotimes [i n] (k (inc i) i)))
+    (->Query (fn [k] (loop [i 0] (when (< i n) (or (k (inc i) i) (recur (inc i))))))
              (fn [x k] (when (in? x) (k (dec x))))
              in?)))
 
@@ -101,8 +101,8 @@
 
 (defn exists?
   "True as soon as one pair arrives. The early exit is an exception thrown from
-   the continuation, so it needs no cooperation from the leaves. It unwinds every leaf loop, so driving genuinely stops.
-   A fresh ex-info per call, matched by identity, so a nested exists? or an
+   the continuation, so it needs no cooperation from the leaves. It unwinds
+   every leaf loop, so driving genuinely stops. A fresh ex-info per call, matched by identity, so a nested exists? or an
    unrelated ex-info can't be mistaken for ours."
   [q]
   (let [found (ex-info "found" {})]
@@ -136,7 +136,7 @@
 (defn from-map
   "key -> value, backed by a map. What every fold returns."
   [m]
-  (->Query (fn [k] (reduce-kv (fn [_ x y] (k x y) nil) nil m))
+  (->Query (fn [k] (reduce-kv (fn [_ x y] (when (k x y) (reduced true))) nil m))
            (fn [x k] (when-some [v (find m x)] (k (val v))))
            (fn [x] (contains? m x))))
 
