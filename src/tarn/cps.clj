@@ -181,7 +181,11 @@
 (defn from-pairs-sorted
   "A drive-only leaf over a vector of [k v] pairs already in the order you want."
   [pairs]
-  (->Query (fn [k] (run! (fn [[x y]] (k x y)) pairs))
+  (->Query (fn [k] (let [n (count pairs)]
+                      (loop [i 0]
+                        (when (< i n)
+                          (let [[x y] (nth pairs i)]
+                            (or (k x y) (recur (inc i))))))))
            (fn [_ _] (throw (ex-info "drive-only" {})))
            (fn [_] (throw (ex-info "drive-only" {})))))
 
@@ -221,7 +225,11 @@
   (let [n (alength arr)
         at (fn [x] (when (and (int? x) (< -1 x n))
                      (let [v (aget arr (int x))] (when-not (identical? v ::none) v))))]
-    (->Query (fn [k] (dotimes [i n] (let [v (aget arr i)] (when-not (identical? v ::none) (k i v)))))
+    (->Query (fn [k] (loop [i 0]
+                        (when (< i n)
+                          (let [v (aget arr i)]
+                            (or (when-not (identical? v ::none) (k i v))
+                                (recur (inc i)))))))
              (fn [x k] (when-some [v (at x)] (k v)))
              (fn [x] (some? (at x))))))
 
