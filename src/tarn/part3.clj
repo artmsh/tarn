@@ -1,5 +1,5 @@
 (ns tarn.part3
-  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count]]
+  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count cmin]]
             [tarn.part2 :refer [artist line artist-name album-artist track-name track-album
                                 country invoice-customer line-invoice line-track brazilian bench]]
             [tarn.chinook :as ch]))
@@ -22,6 +22,15 @@
 (def distinct-tracks-per-country
   (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count)))
 
+(def invoice-date (tarn.part2/col ch/invoice-rows :invoicedate))
+
+(defn first-order-after
+  "Per country, the earliest InvoiceDate (fold with cmin), keeping those later than cutoff."
+  [cutoff]
+  (-> invoice (group (s invoice-customer country)) (s invoice-date)
+      (fold nil (fn [m d] (if (nil? m) d (cmin m d))))
+      (filt #(pos? (compare % cutoff)))))
+
 (def artist-albums (index (inv album-artist)))
 
 (defn -main [& _]
@@ -43,4 +52,14 @@
                                          {:builder-fn next.jdbc.result-set/as-unqualified-lower-maps}))]
     (doseq [c ["USA" "Brazil" "Germany"]] (println "distinct tracks bought," c (got c) "sqlite" (oracle c)))
     (println "all countries match sqlite:" (= got oracle) (count got)))
-  (bench "distinct-count per call      " #(size (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count)))))
+  (bench "distinct-count per call      " #(size (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count))))
+  (println "InvoiceDate class:" (class (first (map :invoicedate ch/invoice-rows))))
+  (println "(min \"a\" \"b\") ->" (try (min "a" "b") (catch Throwable e (.getSimpleName (class e)))))
+  (doseq [cutoff ["2010-01-01" "2010-12-31" "2009-12-31"]]
+    (let [got (into {} (first-order-after cutoff))
+          oracle (into {} (map (juxt :country :d))
+                       (next.jdbc/execute! ch/ds ["select c.Country as country, min(i.InvoiceDate) as d from Invoice i join Customer c using(CustomerId) group by c.Country having min(i.InvoiceDate) > ?" cutoff]
+                                           {:builder-fn next.jdbc.result-set/as-unqualified-lower-maps}))]
+      (println "first order >" cutoff ":" (count got) "countries, match sqlite:" (= got oracle) (into (sorted-map) got))))
+  (bench "first-order-after, fold cmin " #(size (first-order-after "2010-01-01")))
+  (bench "same via gather + fmap min   " #(size (-> invoice (group (s invoice-customer country)) (s invoice-date) (gather) (fmap (fn [ds] (reduce cmin ds))) (filt (fn [d] (pos? (compare d "2010-01-01"))))))))

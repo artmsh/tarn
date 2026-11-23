@@ -167,3 +167,11 @@
    adjacent duplicates, count."
   [q]
   (fmap (gather q) (fn [vs] (count (dedupe (sort vs))))))
+
+;; ---- Part 3, exercise 2: min on strings ----------------------------------
+
+(defn cmin
+  "compare-based min: works on strings, dates, anything Comparable.
+   clojure.core/min is numeric and throws on strings."
+  [a b]
+  (if (neg? (compare a b)) a b))
