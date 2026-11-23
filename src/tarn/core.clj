@@ -30,3 +30,8 @@
   [r t]
   (let [keys (into #{} (map first) t)]
     (filter (fn [[_ y]] (contains? keys y)) r)))
+
+(defn inv
+  "Converse: swap the two columns. x->y becomes y->x."
+  [r]
+  (map (fn [[x y]] [y x]) r))
