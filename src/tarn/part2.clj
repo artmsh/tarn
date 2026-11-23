@@ -1,14 +1,22 @@
 (ns tarn.part2
-  (:require [tarn.cps :as cps :refer [s both eq filt where column ids many size from-pairs exists?]]
+  (:require [tarn.cps :as cps :refer [s both eq filt where column ids dense-ids many size from-pairs exists?]]
             [tarn.core :as core]
             [tarn.chinook :as ch]
             [tarn.part1 :as p1]))
 
 (defn col [rows k] (column (mapv k rows)))
-(defn id  [rows k] (ids (mapv k rows)))
+(defn dense!
+  "Chinook ids are row# + 1. Check it once (a scan, no allocation) so the
+   arithmetic below is a fact about this file, not a hope."
+  [rows k]
+  (dotimes [i (count rows)]
+    (assert (= (k (nth rows i)) (inc i)) (str "id not dense at row " i)))
+  rows)
+
+(defn id  [rows k] (dense-ids (count (dense! rows k))))
 (defn fk  [rows k target-rows target-k]
-  (let [id->row (zipmap (map target-k target-rows) (range))]
-    (column (mapv (comp id->row k) rows))))
+  (dense! target-rows target-k)
+  (column (mapv (comp dec k) rows)))
 
 (def artist   (id ch/artist-rows :artistid))
 (def line     (id ch/line-rows :invoicelineid))
@@ -24,9 +32,9 @@
 (def line-track   (fk ch/line-rows :trackid ch/track-rows :trackid))
 (def playlist-name (col ch/playlist-rows :name))
 (def playlist-tracks
-  (let [pl (zipmap (map :playlistid ch/playlist-rows) (range))
-        tr (zipmap (map :trackid ch/track-rows) (range))]
-    (many (map (fn [row] [(pl (:playlistid row)) (tr (:trackid row))]) ch/playlist-track-rows))))
+  (let [_ (dense! ch/playlist-rows :playlistid)
+        _ (dense! ch/track-rows :trackid)]
+    (many (map (fn [row] [(dec (:playlistid row)) (dec (:trackid row))]) ch/playlist-track-rows))))
 
 (def brazilian
   (-> invoice-customer (s country) (eq "Brazil")))

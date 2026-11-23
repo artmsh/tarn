@@ -44,6 +44,14 @@
              (fn [x k] (when-some [r (id->row x)] (k r)))
              (fn [x] (contains? id->row x)))))
 
+(defn dense-ids
+  "id -> row# for ids 1..n in row order: row# = id - 1. No map, nothing to build."
+  [n]
+  (let [in? (fn [x] (and (int? x) (<= 1 x n)))]
+    (->Query (fn [k] (dotimes [i n] (k (inc i) i)))
+             (fn [x k] (when (in? x) (k (dec x))))
+             in?)))
+
 (defn many
   "key -> several values, from pairs. Indexed once."
   [pairs]
