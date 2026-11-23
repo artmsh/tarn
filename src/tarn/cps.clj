@@ -54,6 +54,11 @@
              (fn [x k] (some k (idx x)))
              (fn [x] (contains? idx x)))))
 
+(defn from-pairs
+  "Any Part 1 relation (a seq of [x y]) as a Query: index it once with many."
+  [pairs]
+  (many pairs))
+
 (defn s
   "Composition. Drive the left side, probe the right."
   [r t]
