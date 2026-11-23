@@ -30,3 +30,12 @@
   [r t]
   (let [keys (into #{} (map first) t)]
     (filter (fn [[_ y]] (contains? keys y)) r)))
+
+(defn cols
+  "Like both for any number of relations, but flat: x->[a b c ...]."
+  [r & rs]
+  (let [idxs (map index rs)]
+    (for [[x a] r
+          vs (reduce (fn [acc idx] (for [v acc, z (idx x)] (conj v z)))
+                     [[a]] idxs)]
+      [x vs])))
