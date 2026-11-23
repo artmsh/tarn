@@ -1,6 +1,6 @@
 (ns tarn.part4
   (:require [tarn.ast :refer [s both eq ge where group fold]]
-            [tarn.sql :refer [to-sql]]
+            [tarn.sql :as sql :refer [to-sql]]
             [tarn.run :refer [run]]
             [tarn.cps :as cps]
             [tarn.part2 :as p2]
@@ -81,4 +81,19 @@
   (let [q (to-sql schema bought-in-brazil)]
     (p2/bench "sqlite, generated sql   " #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
   (let [q ["select il.InvoiceLineId, t.Name, ar.Name from InvoiceLine il join Invoice i on il.InvoiceId=i.InvoiceId join Customer c on i.CustomerId=c.CustomerId join Track t on il.TrackId=t.TrackId join Album al on t.AlbumId=al.AlbumId join Artist ar on al.ArtistId=ar.ArtistId where c.Country='Brazil'"]]
-    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))
+    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
+  (println "--- ex4-3: where as EXISTS vs IN")
+  (doseq [[nm tree] [["bought-in-brazil" bought-in-brazil] ["big-in-brazil" big-in-brazil]]
+          style [:in :exists]]
+    (binding [sql/*where-style* style]
+      (let [q (to-sql schema tree) b (via-sql-rows tree)
+            a (flat (run schema rels ids tree))]
+        (println (format "%-17s %-7s chars %d SELECTs %d rows %d equal to closures: %s"
+                         nm style (count (first q)) (count (re-seq #"SELECT" (first q))) (count b) (= a b))))))
+  (doseq [style [:in :exists]]
+    (binding [sql/*where-style* style]
+      (let [q (to-sql schema bought-in-brazil)]
+        (println "EXPLAIN QUERY PLAN" style)
+        (doseq [r (jdbc/execute! ch/ds (into [(str "EXPLAIN QUERY PLAN " (first q))] (rest q)) {:builder-fn rs/as-unqualified-lower-maps})]
+          (println (format "  %3d %3d %s" (:id r) (:parent r) (:detail r))))
+        (p2/bench (str "sqlite, " (name style) "           ") #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))))
