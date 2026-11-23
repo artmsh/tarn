@@ -33,6 +33,8 @@
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 = ?" (:sql r)) :n (:n r)})
         :ge    (let [r (sub schema a params)] (swap! params conj b)
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 >= ?" (:sql r)) :n (:n r)})
+        :gt    (let [r (sub schema a params)] (swap! params conj b)
+                 {:sql (format "SELECT * FROM %s AS r WHERE r.v1 > ?" (:sql r)) :n (:n r)})
         :where (let [r (sub schema a params) t (sub schema b params)]
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 IN (SELECT t.x FROM %s AS t)" (:sql r) (:sql t))
                   :n (:n r)})
@@ -40,7 +42,7 @@
                  {:sql (format "SELECT t.v1 AS x, r.v1 AS v1 FROM %s AS r JOIN %s AS t ON r.v1 = t.x" (:sql r) (:sql t))
                   :n 1})
         :fold  (let [q (sub schema a params)
-                     agg (case (first b) :count "COUNT(*)" :sum "SUM(q.v1)")]
+                     agg (case (first b) :count "COUNT(*)" :sum "SUM(q.v1)" :min "MIN(q.v1)")]
                  {:sql (format "SELECT q.x AS x, %s AS v1 FROM %s AS q GROUP BY q.x" agg (:sql q)) :n 1})))))
 
 (defn to-sql

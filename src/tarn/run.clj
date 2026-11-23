@@ -14,11 +14,14 @@
         :both  (cps/both (c a) (c b))
         :eq    (cps/eq (c a) b)
         :ge    (cps/filt (c a) #(>= % b))
+        :gt    (cps/filt (c a) #(pos? (compare % b)))   ; compare, not >: values may be strings
         :where (cps/where (c a) (c b))
         :group (cps/group (c a) (c b))
         :fold  (case (first b)
                  :count (cps/fold (c a) 0 (fn [n _] (inc n)))
-                 :sum   (cps/fold (c a) 0.0 +))))))
+                 :sum   (cps/fold (c a) 0.0 +)
+                 ;; clojure.core/min throws on strings; nil is the empty-group marker
+                 :min   (cps/fold (c a) nil (fn [m d] (cond (nil? m) d (neg? (compare d m)) d :else m))))))))
 
 (defn- ref-of
   "Which table a node's values are ids of, per the schema. nil if not a key."
@@ -28,7 +31,7 @@
     (let [[op a b] node]
       (case op
         (:s :group) (ref-of schema b)
-        (:eq :ge :where :fold) (ref-of schema a)
+        (:eq :ge :gt :where :fold) (ref-of schema a)
         :both nil))))
 
 (defn key-ref

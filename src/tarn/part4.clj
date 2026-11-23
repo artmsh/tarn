@@ -1,5 +1,7 @@
 (ns tarn.part4
-  (:require [tarn.ast :refer [s both eq ge where group fold]]
+  (:require [tarn.ast :refer [s both eq ge gt where group fold]]
+            [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [tarn.sql :refer [to-sql]]
             [tarn.run :refer [run]]
             [tarn.cps :as cps]
@@ -16,6 +18,7 @@
    :line-invoice     {:table "InvoiceLine" :key "InvoiceLineId" :val "InvoiceId"  :ref "Invoice"}
    :line-track       {:table "InvoiceLine" :key "InvoiceLineId" :val "TrackId"    :ref "Track"}
    :invoice-customer {:table "Invoice"     :key "InvoiceId"     :val "CustomerId" :ref "Customer"}
+   :invoice-date     {:table "Invoice"     :key "InvoiceId"     :val "InvoiceDate"}
    :invoice-total    {:table "Invoice"     :key "InvoiceId"     :val "Total"}
    :country          {:table "Customer"    :key "CustomerId"    :val "Country"}
    :track-name       {:table "Track"       :key "TrackId"       :val "Name"}
@@ -32,7 +35,7 @@
 ;; what each leaf is, in closure terms: Part 2's loaded relations
 (def rels
   {:line p2/line :invoice p3/invoice :line-invoice p2/line-invoice :line-track p2/line-track
-   :invoice-customer p2/invoice-customer :invoice-total p3/invoice-total :country p2/country
+   :invoice-customer p2/invoice-customer :invoice-total p3/invoice-total :invoice-date (tarn.part2/col ch/invoice-rows :invoicedate) :country p2/country
    :track-name p2/track-name :track-album p2/track-album :album-artist p2/album-artist
    :artist-name p2/artist-name})
 
@@ -64,6 +67,14 @@
 (def revenue
   (-> :invoice (group (s :invoice-customer :country)) (s :invoice-total) (fold [:sum])))
 
+(def first-order
+  (-> :invoice (group (s :invoice-customer :country)) (s :invoice-date) (fold [:min])))
+
+(def first-order-after-2010
+  (gt first-order "2010-01-01"))
+
+(defn sqlite3 [sql] (:out (sh/sh "sqlite3" "chinook.sqlite" sql)))
+
 (defn -main [& _]
   (let [sql (to-sql schema bought-in-brazil)]
     (println "params:" (rest sql))
@@ -81,4 +92,17 @@
   (let [q (to-sql schema bought-in-brazil)]
     (p2/bench "sqlite, generated sql   " #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
   (let [q ["select il.InvoiceLineId, t.Name, ar.Name from InvoiceLine il join Invoice i on il.InvoiceId=i.InvoiceId join Customer c on i.CustomerId=c.CustomerId join Track t on il.TrackId=t.TrackId join Album al on t.AlbumId=al.AlbumId join Artist ar on al.ArtistId=ar.ArtistId where c.Country='Brazil'"]]
-    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))
+    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
+  (println "--- ex4-2: :gt and fold [:min]")
+  (let [oracle (fn [having] (into {} (map #(str/split % #"\|")) (remove str/blank? (str/split-lines (sqlite3 (str "select c.Country, min(i.InvoiceDate) from Invoice i join Customer c using(CustomerId) group by c.Country" having ";"))))))
+        check (fn [label tree having]
+                (let [sql (to-sql schema tree) a (into {} (run schema rels ids tree)) b (into {} (map (juxt first second)) (via-sql-rows tree))
+                      o (oracle having)]
+                  (println label "closures:" (count a) "sql:" (count b) "sqlite3 CLI:" (count o) "all equal:" (= a b o))
+                  sql))
+        sql1 (check "per-country min  " first-order "")
+        sql2 (check "min > 2010-01-01 " first-order-after-2010 " having min(i.InvoiceDate) > '2010-01-01'")]
+    (println "aggregate printed:" (re-find #"MIN\(q\.v1\)" (first sql1)) "| params:" (rest sql2))
+    (println "survivors:" (sort (into {} (run schema rels ids first-order-after-2010))))
+    (println "cutoff 2010-12-31 survivors:" (cps/size (run schema rels ids (gt first-order "2010-12-31"))))
+    (println "core min on strings ->" (try (min "a" "b") (catch Throwable e (.getSimpleName (class e)))))))
