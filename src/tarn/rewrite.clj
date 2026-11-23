@@ -25,7 +25,7 @@
             node))
         tree))
 
-(def ^:private ops #{:s :both :eq :ge :where :group :fold})
+(def ^:private ops #{:s :both :eq :ge :where :group :fold :inv :coalesce :fmap})
 
 (defn nodes
   "One per SELECT the printer will emit: every operator and every leaf."

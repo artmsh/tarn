@@ -9,3 +9,8 @@
 (defn where [r t] [:where r t])
 (defn group [r t] [:group r t])
 (defn fold  [q agg] [:fold q agg])
+
+;; Extensions past Part 5, each in both interpreters (tarn.run, tarn.sql)
+(defn inv      [r]   [:inv r])
+(defn coalesce [r t] [:coalesce r t])
+(defn fmap     [r f] [:fmap r f])

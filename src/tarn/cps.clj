@@ -153,6 +153,38 @@
   [q]
   (fold q [] conj))
 
+(declare fmap)
+
+(defn coalesce
+  "r's value at each key of r; where it is nil, t's values at that key, or nil
+   if t has none. Like SQL's coalesce over a left join."
+  [r t]
+  (letfn [(at [x y k] (if (some? y)
+                        (k y)
+                        (let [any (volatile! false)
+                              out (probe t x (fn [z] (vreset! any true) (k z)))]
+                          (if @any out (k nil)))))]
+    (->Query (fn [k] (drive r (fn [x y] (at x y #(k x %)))))
+             (fn [x k] (probe r x (fn [y] (at x y k))))
+             (:member r))))
+
+(defn sql-compare
+  "Order values as SQLite does across types: nil, numbers, text, blobs."
+  [a b]
+  (let [rank #(cond (nil? %) 0 (number? %) 1 (string? %) 2 :else 3)
+        ra (rank a) rb (rank b)]
+    (cond (not= ra rb) (compare ra rb)
+          (= 3 ra)     (compare (vec a) (vec b))
+          :else        (compare a b))))
+
+(defn argmin
+  "Fold [arg order] values to the arg whose order is least, per key; ties go
+   to the least arg."
+  [q]
+  (let [better? (fn [[a o] [ba bo]] (neg? (let [c (sql-compare o bo)] (if (zero? c) (sql-compare a ba) c))))]
+    (fmap (fold q nil (fn [best v] (if (or (nil? best) (better? v best)) v best)))
+          first)))
+
 (defn fmap
   "r.map(f): apply f to every value. Named fmap because core owns map."
   [r f]

@@ -11,4 +11,6 @@
            :run4 {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
                   :main-opts ["-m" "tarn.part4"]}
            :run5 {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
-                  :main-opts ["-m" "tarn.part5"]}}}
+                  :main-opts ["-m" "tarn.part5"]}
+           :run6 {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+                  :main-opts ["-m" "tarn.part6"]}}}
