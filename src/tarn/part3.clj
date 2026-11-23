@@ -5,7 +5,7 @@
             [tarn.chinook :as ch]))
 
 (def invoice       (tarn.part2/id ch/invoice-rows :invoiceid))
-(def invoice-total (tarn.part2/col ch/invoice-rows :total))
+(def invoice-total (tarn.part2/col ch/invoice-rows (comp bigdec :total)))  ; Double -> BigDecimal at load
 
 (def brazil-lines (-> line (where (-> line-invoice (s brazilian)))))
 (def line-artist  (-> line-track (s track-album) (s album-artist)))
@@ -20,7 +20,7 @@
   (-> per-artist (filt #(>= % 9)) (both artist-name)))
 
 (def revenue
-  (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +)))
+  (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0M +)))
 
 (def distinct-tracks-per-country
   (-> line (group (-> line-invoice (s invoice-customer) (s country))) (s line-track) (distinct-count)))
@@ -52,7 +52,7 @@
   (println "nil group key:" (into [] (-> (ids [10 11 12]) (group (column [0 nil 0])) (gather))))
   (bench "per-artist, materialized once" #(size per-artist))
   (bench "per-artist, folded per call  " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n))))))
-  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0.0 +))))
+  (bench "revenue, folded per call     " #(size (-> invoice (group (s invoice-customer country)) (s invoice-total) (fold 0M +))))
   (let [got (into {} distinct-tracks-per-country)
         oracle (into {} (map (juxt :country :n))
                      (next.jdbc/execute! ch/ds ["select c.Country as country, count(distinct il.TrackId) as n from InvoiceLine il join Invoice i using(InvoiceId) join Customer c using(CustomerId) group by c.Country"]
@@ -70,14 +70,20 @@
       (println "first order >" cutoff ":" (count got) "countries, match sqlite:" (= got oracle) (into (sorted-map) got))))
   (bench "first-order-after, fold cmin " #(size (first-order-after "2010-01-01")))
   (bench "same via gather + fmap min   " #(size (-> invoice (group (s invoice-customer country)) (s invoice-date) (gather) (fmap (fn [ds] (reduce cmin ds))) (filt (fn [d] (pos? (compare d "2010-01-01")))))))
-  (let [h (into {} revenue) sf (into {} (sorted-fold revenue-sorted 0.0 +))]
+  (let [h (into {} revenue) sf (into {} (sorted-fold revenue-sorted 0M +))]
     (println "sorted-fold == fold (same keys, sums within 1e-9):" (and (= (set (keys h)) (set (keys sf)))
                                                                          (every? #(< (Math/abs (- (h %) (sf %))) 1e-9) (keys h))))
-    (println "sorted-fold first 3 keys:" (map first (take 3 (into [] (sorted-fold revenue-sorted 0.0 +))))))
-  (bench "hash fold, per call          " #(size (fold revenue-stream 0.0 +)))
-  (bench "sorted-fold, presorted input " #(size (sorted-fold revenue-sorted 0.0 +)))
-  (bench "sort-by-key + sorted-fold    " #(size (sorted-fold (sort-by-key revenue-stream) 0.0 +)))
+    (println "sorted-fold first 3 keys:" (map first (take 3 (into [] (sorted-fold revenue-sorted 0M +))))))
+  (bench "hash fold, per call          " #(size (fold revenue-stream 0M +)))
+  (bench "sorted-fold, presorted input " #(size (sorted-fold revenue-sorted 0M +)))
+  (bench "sort-by-key + sorted-fold    " #(size (sorted-fold (sort-by-key revenue-stream) 0M +)))
   (bench "sort-by-key alone            " #(size (sort-by-key revenue-stream)))
   (println "dense == map fold:" (= (into {} per-artist) (into {} per-artist-dense)) (size per-artist-dense) "groups of" (count ch/artist-rows) "slots")
   (bench "per-artist, dense per call   " #(size (-> brazil-lines (group line-artist) (dense-fold 275 0 (fn [n _] (inc n))))))
-  (bench "per-artist, map per call     " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n)))))))
+  (bench "per-artist, map per call     " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n))))))
+  (println "Total class from jdbc:" (class (:total (first ch/invoice-rows))) "(bigdec 0.99) =" (bigdec 0.99) "(bigdec 1.98) =" (bigdec 1.98))
+  (let [usa (get (into {} revenue) "USA")
+        oracle (:s (next.jdbc/execute-one! ch/ds ["select sum(cast(round(i.Total*100) as integer)) as s from Invoice i join Customer c using(CustomerId) where c.Country='USA'"]
+                                            {:builder-fn next.jdbc.result-set/as-unqualified-lower-maps}))]
+    (println "USA total:" usa (class usa) "== 523.06M:" (= usa 523.06M) "oracle cents:" oracle (= usa (/ (bigdec oracle) 100M))))
+  (println "all 24 totals exact to 2 dp:" (every? (fn [[_ t]] (= t (.setScale ^BigDecimal t 2))) (into [] revenue))))
