@@ -1,5 +1,5 @@
 (ns tarn.part3
-  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count cmin sorted-fold sort-by-key from-pairs-sorted]]
+  (:require [next.jdbc] [next.jdbc.result-set] [tarn.cps :refer [s both eq filt where column ids size inv index group fold gather fmap distinct-count cmin sorted-fold sort-by-key from-pairs-sorted dense-fold]]
             [tarn.part2 :refer [artist line artist-name album-artist track-name track-album
                                 country invoice-customer line-invoice line-track brazilian bench]]
             [tarn.chinook :as ch]))
@@ -12,6 +12,9 @@
 
 (def per-artist
   (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n)))))
+
+(def per-artist-dense
+  (-> brazil-lines (group line-artist) (dense-fold (count ch/artist-rows) 0 (fn [n _] (inc n)))))
 
 (def big-in-brazil
   (-> per-artist (filt #(>= % 9)) (both artist-name)))
@@ -74,4 +77,7 @@
   (bench "hash fold, per call          " #(size (fold revenue-stream 0.0 +)))
   (bench "sorted-fold, presorted input " #(size (sorted-fold revenue-sorted 0.0 +)))
   (bench "sort-by-key + sorted-fold    " #(size (sorted-fold (sort-by-key revenue-stream) 0.0 +)))
-  (bench "sort-by-key alone            " #(size (sort-by-key revenue-stream))))
+  (bench "sort-by-key alone            " #(size (sort-by-key revenue-stream)))
+  (println "dense == map fold:" (= (into {} per-artist) (into {} per-artist-dense)) (size per-artist-dense) "groups of" (count ch/artist-rows) "slots")
+  (bench "per-artist, dense per call   " #(size (-> brazil-lines (group line-artist) (dense-fold 275 0 (fn [n _] (inc n))))))
+  (bench "per-artist, map per call     " #(size (-> brazil-lines (group line-artist) (fold 0 (fn [n _] (inc n)))))))
