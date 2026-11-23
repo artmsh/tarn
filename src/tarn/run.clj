@@ -1,6 +1,7 @@
 (ns tarn.run
   "Interpreter 1: a tree in, Part 2/3 closures out."
-  (:require [tarn.cps :as cps]))
+  (:require [tarn.cps :as cps]
+            [tarn.like :as like]))
 
 (defn compile*
   "rels maps leaf keywords to loaded Query leaves."
@@ -14,6 +15,8 @@
         :both  (cps/both (c a) (c b))
         :eq    (cps/eq (c a) b)
         :ge    (cps/filt (c a) #(>= % b))
+        :filt  (case (first b)
+                 :like (cps/filt (c a) (like/like-pred (second b))))
         :where (cps/where (c a) (c b))
         :group (cps/group (c a) (c b))
         :fold  (case (first b)
@@ -28,7 +31,7 @@
     (let [[op a b] node]
       (case op
         (:s :group) (ref-of schema b)
-        (:eq :ge :where :fold) (ref-of schema a)
+        (:eq :ge :filt :where :fold) (ref-of schema a)
         :both nil))))
 
 (defn key-ref
