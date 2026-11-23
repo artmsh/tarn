@@ -72,7 +72,7 @@
   (bench "same via gather + fmap min   " #(size (-> invoice (group (s invoice-customer country)) (s invoice-date) (gather) (fmap (fn [ds] (reduce cmin ds))) (filt (fn [d] (pos? (compare d "2010-01-01")))))))
   (let [h (into {} revenue) sf (into {} (sorted-fold revenue-sorted 0M +))]
     (println "sorted-fold == fold (same keys, sums within 1e-9):" (and (= (set (keys h)) (set (keys sf)))
-                                                                         (every? #(< (Math/abs (- (h %) (sf %))) 1e-9) (keys h))))
+                                                                         (every? #(< (abs (- (h %) (sf %))) 1e-9) (keys h))))
     (println "sorted-fold first 3 keys:" (map first (take 3 (into [] (sorted-fold revenue-sorted 0M +))))))
   (bench "hash fold, per call          " #(size (fold revenue-stream 0M +)))
   (bench "sorted-fold, presorted input " #(size (sorted-fold revenue-sorted 0M +)))
