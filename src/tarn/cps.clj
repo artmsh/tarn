@@ -82,4 +82,17 @@
 
 (defn size [q] (reduce (fn [n _] (inc n)) 0 q))
 
+(defn exists?
+  "True as soon as one pair arrives. This base has no stop protocol (drive's
+   continuations return nothing), so the early exit is an exception thrown from
+   the continuation. It unwinds every leaf loop, so driving genuinely stops.
+   A fresh ex-info per call, matched by identity, so a nested exists? or an
+   unrelated ex-info can't be mistaken for ours."
+  [q]
+  (let [found (ex-info "found" {})]
+    (try (drive q (fn [_ _] (throw found)))
+         false
+         (catch clojure.lang.ExceptionInfo e
+           (if (identical? e found) true (throw e))))))
+
 
