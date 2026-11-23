@@ -23,14 +23,36 @@
     (probe q x (fn [y] (when (pred y) (vreset! hit true))))
     @hit))
 
+;; ---- probe counting (ex5-4) ----------------------------------------------
+;; Off by default: a boxed long per increment would add ~16 bytes a probe and
+;; move every bytes-per-run figure. count-probes switches it on for one call,
+;; resets, runs, and switches it off again, so nothing outlives the call.
+(def ^:private counting? (volatile! false))
+(def ^:private column-probes (volatile! 0))
+(def ^:private many-probes (volatile! 0))
+(def ^:private column-members (volatile! 0))
+(def ^:private many-members (volatile! 0))
+
+(defn- tick [c] (when @counting? (vswap! c inc)))
+
+(defn count-probes
+  "Run (f) once with counting on. Returns {:column n :many n :member n :result r}:
+   probes into column and many leaves, and member? calls on them."
+  [f]
+  (vreset! column-probes 0) (vreset! many-probes 0) (vreset! column-members 0) (vreset! many-members 0)
+  (vreset! counting? true)
+  (let [r (try (f) (finally (vreset! counting? false)))]
+    {:column @column-probes :many @many-probes
+     :member (+ @column-members @many-members) :result r}))
+
 (defn column
   "row# -> value, backed by the vector itself."
   [v]
   (let [n (count v)
         in? (fn [x] (and (int? x) (< -1 x n)))]
     (->Query (fn [k] (dotimes [i n] (k i (nth v i))))
-             (fn [x k] (when (in? x) (k (nth v x))))
-             in?)))
+             (fn [x k] (tick column-probes) (when (in? x) (k (nth v x))))
+             (fn [x] (tick column-members) (in? x)))))
 
 (defn ids
   "id -> row#. The one map we build, and we build it at load, not per query."
@@ -48,8 +70,8 @@
              (reduce (fn [m [y z]] (assoc! m y (conj (get m y []) z)))
                      (transient {}) pairs))]
     (->Query (fn [k] (doseq [[y zs] idx, z zs] (k y z)))
-             (fn [x k] (doseq [z (idx x)] (k z)))
-             (fn [x] (contains? idx x)))))
+             (fn [x k] (tick many-probes) (doseq [z (idx x)] (k z)))
+             (fn [x] (tick many-members) (contains? idx x)))))
 
 (defn s
   "Composition. Drive the left side, probe the right."

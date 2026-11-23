@@ -59,6 +59,28 @@
 (defn sql-rows-of [tree]
   (into #{} (map (fn [r] (vec (take-last 3 r)))) (sql-rows tree)))
 
+(defn time-ms
+  "Mean ms per call over n calls, after a warm-up."
+  [f n]
+  (dotimes [_ (* 4 n)] (f))
+  (let [t0 (System/nanoTime)] (dotimes [_ n] (f)) (/ (- (System/nanoTime) t0) n 1e6)))
+
+(defn probe-report
+  "Probes per run next to milliseconds, for the three trees, and the ratios."
+  []
+  (let [rows (for [[label tree] [["as written" as-written] ["factored  " factored] ["flipped   " flipped]]]
+               (let [f #(cps/size (run schema rels ids tree))
+                     c (cps/count-probes f)]
+                 (assoc c :label label :ms (time-ms f 1000))))
+        tot #(+ (:column %) (:many %) (:member %))
+        [a fa fl] rows]
+    (doseq [r rows]
+      (println (format "probes, %s: %,d (column %,d, many %,d, member %,d) %.3f ms, rows %,d"
+                       (:label r) (tot r) (:column r) (:many r) (:member r) (:ms r) (:result r))))
+    (println (format "ratio as written / flipped: probes %.2f, time %.2f | as written / factored: probes %.2f, time %.2f"
+                     (double (/ (tot a) (tot fl))) (/ (:ms a) (:ms fl))
+                     (double (/ (tot a) (tot fa))) (/ (:ms a) (:ms fa))))))
+
 (defn -main [& _]
   (println "as written:" (nodes as-written) "nodes, factored:" (nodes factored) "nodes, flipped:" (nodes flipped) "nodes")
   (println "factored tree:" factored)
@@ -69,6 +91,7 @@
              "factored:" (cps/size (run schema rels ids pl-factored))
              "| sql:" (sql-count pl-as-written) (sql-count pl-factored)))
   (println "flipped, same rows:" (= (rows-of as-written) (rows-of flipped)) (= (sql-rows-of as-written) (sql-rows-of flipped)))
+  (probe-report)
   (doseq [[label tree] [["as written" as-written] ["factored  " factored] ["flipped   " flipped]]]
     (let [q (to-sql schema tree)]
       (spit (str "generated-" (.replace (.trim ^String label) " " "-") ".sql") (str (.replace ^String (first q) "?" "'Brazil'") ";\n"))
