@@ -8,10 +8,13 @@
   (reduce [_ f init]
     (let [acc (volatile! init)]
       (drive (fn [x y]
-               (when-not (reduced? @acc)
-                 (vswap! acc f [x y]))))
+               (vreset! acc (f @acc [x y]))
+               (reduced? @acc)))
       (unreduced @acc))))
 
+;; Stop protocol: a continuation returns truthy to mean "stop". drive and
+;; probe return whatever the last continuation returned, so a stop travels
+;; back up through every combinator to the leaf loop, which quits.
 (defn drive   [q k]   ((:drive q) k))
 (defn probe   [q x k] ((:probe q) x k))
 (defn member? [q x]   ((:member q) x))
@@ -20,7 +23,7 @@
   "true if any value under x satisfies pred."
   [q x pred]
   (let [hit (volatile! false)]
-    (probe q x (fn [y] (when (pred y) (vreset! hit true))))
+    (probe q x (fn [y] (when (pred y) (vreset! hit true) true)))
     @hit))
 
 (defn column
@@ -28,7 +31,7 @@
   [v]
   (let [n (count v)
         in? (fn [x] (and (int? x) (< -1 x n)))]
-    (->Query (fn [k] (dotimes [i n] (k i (nth v i))))
+    (->Query (fn [k] (loop [i 0] (when (< i n) (or (k i (nth v i)) (recur (inc i))))))
              (fn [x k] (when (in? x) (k (nth v x))))
              in?)))
 
@@ -37,7 +40,7 @@
   [id-vec]
   (let [n (count id-vec)
         id->row (zipmap id-vec (range))]
-    (->Query (fn [k] (dotimes [i n] (k (nth id-vec i) i)))
+    (->Query (fn [k] (loop [i 0] (when (< i n) (or (k (nth id-vec i) i) (recur (inc i))))))
              (fn [x k] (when-some [r (id->row x)] (k r)))
              (fn [x] (contains? id->row x)))))
 
@@ -47,8 +50,8 @@
   (let [idx (persistent!
              (reduce (fn [m [y z]] (assoc! m y (conj (get m y []) z)))
                      (transient {}) pairs))]
-    (->Query (fn [k] (doseq [[y zs] idx, z zs] (k y z)))
-             (fn [x k] (doseq [z (idx x)] (k z)))
+    (->Query (fn [k] (some (fn [[y zs]] (some #(k y %) zs)) idx))
+             (fn [x k] (some k (idx x)))
              (fn [x] (contains? idx x)))))
 
 (defn s
