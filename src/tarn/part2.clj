@@ -56,5 +56,6 @@
   (println "tracks on Brazilian Music:"
            (size (-> playlist (where (eq playlist-name "Brazilian Music")) (s playlist-tracks) (s track-name))))
   (println "first 2 pairs, reduced early:" (into [] (take 2) bought-in-brazil))
+  (bench "take 2 (reduced early)" #(into [] (take 2) bought-in-brazil))
   (bench "part 1, seqs + indexes" #(count (vec (p1/bought-in-brazil))))
   (bench "part 2, drive + probe  " #(size bought-in-brazil)))
