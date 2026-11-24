@@ -166,6 +166,8 @@
     (let [r (cse/cse {:dup [:both brazilian brazilian]})]
       (println "synthetic [:both brazilian brazilian]:")
       (show (:equal-subtrees r))))
+  ;; the SQL experiments below were written against Part 4's IN form
+  (binding [sql/*where-style* :in]
   (let [q (to-sql schema bought-in-brazil)
         rep (cse/repeated-sql (first q))]
     (println "repeated (SELECT ...) texts in the generated SQL:" (count rep))
@@ -194,4 +196,4 @@
                                (fn [x k] (swap! n inc) (cps/probe q x k))
                                (:member q)))]
     (cps/size (run schema (assoc rels :line-track counted) ids bought-in-brazil))
-    (println "closures: :line-track entered" @n "times in one run of the Brazil query: 190 rows x 2 branches, each an O(1) array lookup")))
+    (println "closures: :line-track entered" @n "times in one run of the Brazil query: 190 rows x 2 branches, each an O(1) array lookup"))))
