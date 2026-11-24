@@ -166,7 +166,7 @@
     (let [r (cse/cse {:dup [:both brazilian brazilian]})]
       (println "synthetic [:both brazilian brazilian]:")
       (show (:equal-subtrees r))))
-  ;; the SQL experiments below were written against Part 4's IN form
+  ;; the SQL experiments below were written against Part 4's IN form (the default; bound so they stay on it)
   (binding [sql/*where-style* :in]
   (let [q (to-sql schema bought-in-brazil)
         rep (cse/repeated-sql (first q))]

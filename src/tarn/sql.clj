@@ -28,7 +28,11 @@
     (throw (ex-info (str op " takes a relation with one value column, not " n) {:op op :n n})))
   r)
 
-(def ^:dynamic *where-style* "How `where` prints: :exists (default) or :in (Part 4 as written)." :exists)
+(def ^:dynamic *where-style*
+  "How `where` prints: :in (default, Part 4 as written) or :exists (ex4-3).
+   IN builds the list once; EXISTS ran a correlated three-table probe per
+   InvoiceLine and was 1.6-2.7x slower on Chinook."
+  :in)
 
 (declare emit)
 
