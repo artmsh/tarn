@@ -1,5 +1,8 @@
 (ns tarn.part4
-  (:require [tarn.ast :refer [s both eq ge where group fold]]
+  (:require [tarn.ast :refer [s both eq ge filt where group fold]]
+            [tarn.like :as like]
+            [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [tarn.sql :refer [to-sql]]
             [tarn.run :refer [run]]
             [tarn.cps :as cps]
@@ -54,6 +57,22 @@
       (s (both (-> :line-track (s :track-name))
                (-> :line-track (s :track-album) (s :album-artist) (s :artist-name))))))
 
+(def live-in-brazil
+  (-> :line (where (-> :line-invoice (s brazilian)))
+      (s (-> :line-track (s :track-name) (filt [:like "%Live%"])))))
+
+(defn sqlite3 [sql] (:out (sh/sh "sqlite3" "chinook.sqlite" sql)))
+
+(defn like-check
+  "Every LIKE pattern, over every track name: regex vs sqlite3 CLI (the oracle)."
+  []
+  (doseq [pat ["%Live%" "%live%" "L_ve%" "%(%" "%.%" "%[a-z]%" "%\\%" "%" "" "_" "%é%" "%É%" "%NAÇÃO%" "%Nação%" "a%b" "%$%" "%^%" "%*%" "%+%" "%?%"]]
+    (let [esc (str/replace pat "'" "''")
+          oracle (into #{} (remove str/blank?) (str/split-lines (sqlite3 (str "select TrackId from Track where Name like '" esc "'"))))
+          pred (like/like-pred pat)
+          got (into #{} (comp (filter (fn [r] (pred (:name r)))) (map #(str (:trackid %)))) ch/track-rows)]
+      (println (format "like %-10s sqlite %4d regex %4d agree %s" (pr-str pat) (count oracle) (count got) (= oracle got))))))
+
 (def big-in-brazil
   (-> :line (where (-> :line-invoice (s brazilian)))
       (group (-> :line-track (s :track-album) (s :album-artist)))
@@ -81,4 +100,17 @@
   (let [q (to-sql schema bought-in-brazil)]
     (p2/bench "sqlite, generated sql   " #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
   (let [q ["select il.InvoiceLineId, t.Name, ar.Name from InvoiceLine il join Invoice i on il.InvoiceId=i.InvoiceId join Customer c on i.CustomerId=c.CustomerId join Track t on il.TrackId=t.TrackId join Album al on t.AlbumId=al.AlbumId join Artist ar on al.ArtistId=ar.ArtistId where c.Country='Brazil'"]]
-    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))
+    (p2/bench "sqlite, hand-written sql" #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays}))))
+  (println "--- ex4-1: [:filt r [:like \"%Live%\"]]")
+  (let [t live-in-brazil sql (to-sql schema t)
+        a (flat (run schema rels ids t)) b (via-sql-rows t)
+        oracle (into #{} (comp (remove str/blank?) (map #(str/split % #"\|" 2))) (str/split-lines (sqlite3 "select il.InvoiceLineId, t.Name from InvoiceLine il join Invoice i using(InvoiceId) join Customer c using(CustomerId) join Track t using(TrackId) where c.Country='Brazil' and t.Name like '%Live%'")))
+        o (into #{} (map (fn [[i n]] [(parse-long i) n])) oracle)]
+    (println "params:" (rest sql))
+    (println "live-in-brazil closures:" (count a) "sql:" (count b) "equal:" (= a b) "sqlite3 CLI:" (count o) "equal:" (= o a))
+    (println (sort-by first a)))
+  (like-check)
+  (println "brazil, case-sensitive (re-find #\"Live\"):"
+           (count (filter (fn [[_ n]] (re-find #"Live" n)) (flat (run schema rels ids (-> :line (where (-> :line-invoice (s brazilian))) (s :line-track) (s :track-name)))))) "rows, vs 6 with LIKE semantics")
+  (println "case-sensitive re-find '(Live)' would keep" (count (filter #(re-find #"Live" (:name %)) ch/track-rows)) "of" (count ch/track-rows)
+           "vs LIKE" (count (filter (comp (like/like-pred "%Live%") :name) ch/track-rows))))

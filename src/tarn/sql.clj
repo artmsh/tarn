@@ -73,6 +73,10 @@
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 = ?" (:sql r)) :n (:n r)})
         :ge    (let [r (sub schema a params)] (swap! params conj b)
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 >= ?" (:sql r)) :n (:n r)})
+        :filt  (let [r (sub schema a params) [pop pat] b]
+                 (case pop
+                   :like (do (swap! params conj pat)
+                             {:sql (format "SELECT * FROM %s AS r WHERE r.v1 LIKE ?" (:sql r)) :n (:n r)})))
         :where (let [r (sub schema a params) t (sub schema b params)]
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 IN (SELECT t.x FROM %s AS t)" (:sql r) (:sql t))
                   :n (:n r)})
