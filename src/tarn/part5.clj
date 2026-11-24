@@ -2,7 +2,7 @@
   (:require [tarn.ast :refer [s both eq ge where group fold]]
             [tarn.sql :refer [to-sql]]
             [tarn.run :refer [run]]
-            [tarn.rewrite :refer [reassoc factor nodes]]
+            [tarn.rewrite :refer [reassoc factor nodes functional?]]
             [tarn.cps :as cps]
             [tarn.part2 :as p2]
             [tarn.part3 :as p3]
@@ -11,24 +11,34 @@
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]))
 
+;; five more leaves: two junction-shaped, one backwards, one identity column
+(def functional-leaves
+  "Column leaves: one value per key. :playlist-tracks and :invoice-lines are
+   junction-shaped, many per key, so they are absent on purpose. Absent means
+   not functional, and factor then refuses."
+  #{:line :invoice :line-invoice :line-track :invoice-customer :invoice-total :country
+    :track-name :track-album :album-artist :artist-name
+    :playlist :playlist-name :line-id})
+
+(def schema
+  (into {}
+        (map (fn [[k v]] [k (cond-> v (functional-leaves k) (assoc :functional true))]))
+        (merge p4/schema
+         {:playlist        {:table "Playlist"      :key "PlaylistId" :val "PlaylistId" :entry true}
+          :playlist-name   {:table "Playlist"      :key "PlaylistId" :val "Name"}
+          :playlist-tracks {:table "PlaylistTrack" :key "PlaylistId" :val "TrackId" :ref "Track"}
+          :invoice-lines   {:table "InvoiceLine"   :key "InvoiceId"  :val "InvoiceLineId" :ref "InvoiceLine"}
+          :line-id         {:table "InvoiceLine"   :key "InvoiceLineId" :val "InvoiceLineId"}})))
+
 (def brazil     p4/brazilian)
 (def as-written p4/bought-in-brazil)
-(def factored   (-> as-written reassoc factor))
+(def factored   (->> as-written reassoc (factor schema)))
 ;; factored => [:s [:where :line …] [:s :line-track [:both :track-name [:s :track-album [:s :album-artist :artist-name]]]]]
 
 (def brazilian-music (-> :playlist (where (-> :playlist-name (eq "Brazilian Music")))))
 (def pl-as-written (-> brazilian-music (s (both (-> :playlist-tracks (s :track-name))
                                                   (-> :playlist-tracks (s :track-album))))))
-(def pl-factored (-> pl-as-written reassoc factor))
-
-;; five more leaves: two junction-shaped, one backwards, one identity column
-(def schema
-  (merge p4/schema
-         {:playlist        {:table "Playlist"      :key "PlaylistId" :val "PlaylistId" :entry true}
-          :playlist-name   {:table "Playlist"      :key "PlaylistId" :val "Name"}
-          :playlist-tracks {:table "PlaylistTrack" :key "PlaylistId" :val "TrackId" :ref "Track"}
-          :invoice-lines   {:table "InvoiceLine"   :key "InvoiceId"  :val "InvoiceLineId" :ref "InvoiceLine"}
-          :line-id         {:table "InvoiceLine"   :key "InvoiceLineId" :val "InvoiceLineId"}}))
+(def pl-factored (->> pl-as-written reassoc (factor schema)))
 
 (def rels
   (merge p4/rels
@@ -68,6 +78,14 @@
     (println "playlist as written:" (cps/size (run schema rels ids pl-as-written))
              "factored:" (cps/size (run schema rels ids pl-factored))
              "| sql:" (sql-count pl-as-written) (sql-count pl-factored)))
+  (println "factor leaves pl-as-written alone:" (= pl-as-written pl-factored)
+           "| functional?: line-track" (functional? schema :line-track)
+           "playlist-tracks" (functional? schema :playlist-tracks)
+           "[:s :line-invoice :invoice-lines]" (functional? schema [:s :line-invoice :invoice-lines]))
+  (println "factor still factors brazil:" (not= as-written factored) (= 20 (nodes as-written)) (= 18 (nodes factored)))
+  (let [meant (-> brazilian-music (s :playlist-tracks) (s (both :track-name :track-album)))
+        sql-count #(count (rest (jdbc/execute! ch/ds (to-sql schema %) {:builder-fn rs/as-arrays})))]
+    (println "playlist, the tracks written once:" (cps/size (run schema rels ids meant)) "| sql:" (sql-count meant)))
   (println "flipped, same rows:" (= (rows-of as-written) (rows-of flipped)) (= (sql-rows-of as-written) (sql-rows-of flipped)))
   (doseq [[label tree] [["as written" as-written] ["factored  " factored] ["flipped   " flipped]]]
     (let [q (to-sql schema tree)]

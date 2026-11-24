@@ -14,13 +14,31 @@
             node))
         tree))
 
+(defn functional?
+  "True when every key of the tree has at most one value. A leaf says so in the
+   schema (:functional true; absent means no). s and both are functional when
+   both sides are, eq/ge/where filter and so stay as they are, fold yields one
+   value per key, and group re-keys by value, so it never is."
+  [schema node]
+  (if (keyword? node)
+    (boolean (:functional (schema node)))
+    (let [[op a b] node]
+      (case op
+        (:s :both) (and (functional? schema a) (functional? schema b))
+        (:eq :ge :where) (functional? schema a)
+        :fold true
+        false))))
+
 (defn factor
-  "r.s(a).and(r.s(b)) => r.s(a.and(b)) wherever the two left sides are equal.
-   Valid only when r is functional: one value per key."
-  [tree]
+  "r.s(a).and(r.s(b)) => r.s(a.and(b)) wherever the two left sides are equal
+   AND r is functional (one value per key). With a many-valued r the left side
+   pairs every a-value with every b-value of the key, the right side only those
+   of the same r-value: 1,521 rows against 39 for a playlist's tracks."
+  [schema tree]
   (rule (fn [[op l r :as node]]
           (if (and (= op :both) (vector? l) (vector? r)
-                   (= :s (first l) (first r)) (= (second l) (second r)))
+                   (= :s (first l) (first r)) (= (second l) (second r))
+                   (functional? schema (second l)))
             [:s (second l) [:both (nth l 2) (nth r 2)]]
             node))
         tree))
