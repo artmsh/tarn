@@ -39,7 +39,8 @@ Temporary Items
 !.env.example
 
 # Local agent state
-.claude/settings.local.json
+.claude/
+.agents/
 .cpcache/
 *.sqlite
 .clj-kondo/
