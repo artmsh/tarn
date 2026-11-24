@@ -28,6 +28,8 @@
     (throw (ex-info (str op " takes a relation with one value column, not " n) {:op op :n n})))
   r)
 
+(def ^:dynamic *where-style* "How `where` prints: :exists (default) or :in (Part 4 as written)." :exists)
+
 (declare emit)
 
 (def ^:private materialized
@@ -80,7 +82,10 @@
         :gt    (let [r (sub schema a params)] (swap! params conj b)
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 > ?" (:sql r)) :n (:n r)})
         :where (let [r (sub schema a params) t (sub schema b params)]
-                 {:sql (format "SELECT * FROM %s AS r WHERE r.v1 IN (SELECT t.x FROM %s AS t)" (:sql r) (:sql t))
+                 {:sql (format (case *where-style*
+                                 :exists "SELECT * FROM %s AS r WHERE EXISTS (SELECT 1 FROM %s AS t WHERE t.x = r.v1)"
+                                 :in     "SELECT * FROM %s AS r WHERE r.v1 IN (SELECT t.x FROM %s AS t)")
+                               (:sql r) (:sql t))
                   :n (:n r)})
         :group (let [r (sub schema a params) t (sub schema b params)]
                  {:sql (format "SELECT t.v1 AS x, r.v1 AS v1 FROM %s AS r JOIN %s AS t ON r.v1 = t.x" (:sql r) (:sql t))

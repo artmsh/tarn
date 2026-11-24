@@ -3,7 +3,7 @@
             [tarn.like :as like]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [tarn.sql :refer [to-sql]]
+            [tarn.sql :as sql :refer [to-sql]]
             [tarn.run :refer [run]]
             [tarn.cps :as cps]
             [tarn.part2 :as p2]
@@ -135,4 +135,19 @@
     (println "aggregate printed:" (re-find #"MIN\(q\.v1\)" (first sql1)) "| params:" (rest sql2))
     (println "survivors:" (sort (into {} (run schema rels ids first-order-after-2010))))
     (println "cutoff 2010-12-31 survivors:" (cps/size (run schema rels ids (gt first-order "2010-12-31"))))
-    (println "core min on strings ->" (try (min "a" "b") (catch Throwable e (.getSimpleName (class e)))))))
+    (println "core min on strings ->" (try (min "a" "b") (catch Throwable e (.getSimpleName (class e))))))
+  (println "--- ex4-3: where as EXISTS vs IN")
+  (doseq [[nm tree] [["bought-in-brazil" bought-in-brazil] ["big-in-brazil" big-in-brazil]]
+          style [:in :exists]]
+    (binding [sql/*where-style* style]
+      (let [q (to-sql schema tree) b (via-sql-rows tree)
+            a (flat (run schema rels ids tree))]
+        (println (format "%-17s %-7s chars %d SELECTs %d rows %d equal to closures: %s"
+                         nm style (count (first q)) (count (re-seq #"SELECT" (first q))) (count b) (= a b))))))
+  (doseq [style [:in :exists]]
+    (binding [sql/*where-style* style]
+      (let [q (to-sql schema bought-in-brazil)]
+        (println "EXPLAIN QUERY PLAN" style)
+        (doseq [r (jdbc/execute! ch/ds (into [(str "EXPLAIN QUERY PLAN " (first q))] (rest q)) {:builder-fn rs/as-unqualified-lower-maps})]
+          (println (format "  %3d %3d %s" (:id r) (:parent r) (:detail r))))
+        (p2/bench (str "sqlite, " (name style) "           ") #(count (jdbc/execute! ch/ds q {:builder-fn rs/as-arrays})))))))
