@@ -43,6 +43,20 @@
             node))
         tree))
 
+(defn push-eq
+  "[:eq [:s r t] v] => [:s r [:eq t v]]. Always valid: (r.s(t))(x) is the union
+   of t(y) over the y in r(x), eq keeps the values equal to v, and a filter on
+   values distributes over a union, so no condition on r, t or the data holds
+   it back (many-valued r, shared y, empty r(x): all the same set, and the same
+   bag in SQL, where a row is kept or dropped on its own). Recurses because the
+   pushed eq may sit on another :s."
+  [tree]
+  (rule (fn [[op l v :as node]]
+          (if (and (= op :eq) (vector? l) (= :s (first l)))
+            [:s (second l) (push-eq [:eq (nth l 2) v])]
+            node))
+        tree))
+
 (def ^:private ops #{:s :both :eq :ge :where :group :fold :inv :coalesce :fmap})
 
 (defn nodes

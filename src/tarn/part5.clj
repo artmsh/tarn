@@ -2,7 +2,7 @@
   (:require [tarn.ast :refer [s both eq ge where group fold]]
             [tarn.sql :refer [to-sql]]
             [tarn.run :refer [run]]
-            [tarn.rewrite :refer [reassoc factor nodes functional?]]
+            [tarn.rewrite :refer [reassoc factor nodes functional? push-eq]]
             [tarn.cps :as cps]
             [tarn.part2 :as p2]
             [tarn.part3 :as p3]
@@ -91,6 +91,34 @@
   [table tree]
   (count (filter #(re-find (re-pattern (str "^(SCAN|SEARCH) " table "\\b")) %) (plan tree))))
 
+(defn time-ms
+  "Mean ms per call over n calls, after a warm-up."
+  [f n]
+  (dotimes [_ (* 4 n)] (f))
+  (let [t0 (System/nanoTime)] (dotimes [_ n] (f)) (/ (- (System/nanoTime) t0) n 1e6)))
+
+(defn median [xs] (nth (sort xs) (quot (count xs) 2)))
+
+(defn push-eq-report
+  "Before and after push-eq: rows (both interpreters), nodes, SELECTs, plan,
+   and time, interleaved in this JVM, median of 5 rounds."
+  []
+  (doseq [[label tree] [["brazilian " brazil] ["as-written" as-written] ["factored  " factored] ["flipped   " flipped]]]
+    (let [pushed (push-eq tree)
+          run-c  #(cps/size (run schema rels ids %))
+          q      #(to-sql schema %)
+          run-s  #(count (jdbc/execute! ch/ds (q %) {:builder-fn rs/as-arrays}))
+          sel    #(count (re-seq #"SELECT" (first (q %))))
+          rounds (repeatedly 5 (fn [] [(time-ms #(run-c tree) 400) (time-ms #(run-c pushed) 400)
+                                       (time-ms #(run-s tree) 150) (time-ms #(run-s pushed) 150)]))
+          col    (fn [i] (median (map #(nth % i) rounds)))]
+      (println label "changed:" (not= tree pushed)
+               "| rows closures:" (= (flat (run schema rels ids tree)) (flat (run schema rels ids pushed)))
+               "sql:" (= (sql-rows tree) (sql-rows pushed))
+               "| nodes" (nodes tree) "->" (nodes pushed) "SELECTs" (sel tree) "->" (sel pushed)
+               "| plan same:" (= (plan tree) (plan pushed))
+               (format "| closures %.4f -> %.4f ms, sqlite %.3f -> %.3f ms" (col 0) (col 1) (col 2) (col 3))))))
+
 (defn -main [& _]
   (println "as written:" (nodes as-written) "nodes, factored:" (nodes factored) "nodes, flipped:" (nodes flipped) "nodes")
   (println "factored tree:" factored)
@@ -111,6 +139,7 @@
   (println "flipped, same rows:" (= (rows-of as-written) (rows-of flipped)) (= (sql-rows-of as-written) (sql-rows-of flipped)))
   (println "plan steps reading Track, as written / factored / flipped:"
            (reads "Track" as-written) (reads "Track" factored) (reads "Track" flipped))
+  (push-eq-report)
   (doseq [[label tree] [["as written" as-written] ["factored  " factored] ["flipped   " flipped]]]
     (let [q (to-sql schema tree)]
       (spit (str "generated-" (.replace (.trim ^String label) " " "-") ".sql") (str (.replace ^String (first q) "?" "'Brazil'") ";\n"))
