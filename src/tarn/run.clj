@@ -22,11 +22,14 @@
         :ge    (cps/filt (c a) #(>= % b))
         :filt  (case (first b)
                  :like (cps/filt (c a) (like/like-pred (second b))))
+        :gt    (cps/filt (c a) #(pos? (compare % b)))   ; compare, not >: values may be strings
         :where (cps/where (c a) (c b))
         :group (cps/group (c a) (c b))
         :fold  (case (first b)
                  :count  (cps/fold (c a) 0 (fn [n _] (inc n)))
                  :sum    (cps/fold (c a) 0.0 +)
+                 ;; clojure.core/min throws on strings; nil is the empty-group marker
+                 :min    (cps/fold (c a) nil (fn [m d] (cond (nil? m) d (neg? (compare d m)) d :else m)))
                  :argmin (cps/argmin (c a)))
         :inv   (cps/index (cps/inv (c a))) ; materialized, so it can be probed
         :coalesce (cps/coalesce (c a) (c b))
@@ -40,7 +43,7 @@
     (let [[op a b] node]
       (case op
         (:s :group) (ref-of schema b)
-        (:eq :ge :filt :where :fold :coalesce) (ref-of schema a)
+        (:eq :ge :gt :filt :where :fold :coalesce) (ref-of schema a)
         (:both :inv :fmap) nil))))
 
 (defn key-ref

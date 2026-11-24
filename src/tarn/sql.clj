@@ -77,6 +77,8 @@
                  (case pop
                    :like (do (swap! params conj pat)
                              {:sql (format "SELECT * FROM %s AS r WHERE r.v1 LIKE ?" (:sql r)) :n (:n r)})))
+        :gt    (let [r (sub schema a params)] (swap! params conj b)
+                 {:sql (format "SELECT * FROM %s AS r WHERE r.v1 > ?" (:sql r)) :n (:n r)})
         :where (let [r (sub schema a params) t (sub schema b params)]
                  {:sql (format "SELECT * FROM %s AS r WHERE r.v1 IN (SELECT t.x FROM %s AS t)" (:sql r) (:sql t))
                   :n (:n r)})
@@ -90,7 +92,7 @@
                          (throw (ex-info "argmin folds [arg order] pairs: two value columns" {:n (:n q)})))
                        {:sql (format "SELECT x, v1 FROM (SELECT q.x AS x, q.v1 AS v1, row_number() OVER (PARTITION BY q.x ORDER BY q.v2, q.v1) AS rn FROM %s AS q) WHERE rn = 1" (:sql q))
                         :n 1})
-                   (let [agg (case (first b) :count "COUNT(*)" :sum "SUM(q.v1)")]
+                   (let [agg (case (first b) :count "COUNT(*)" :sum "SUM(q.v1)" :min "MIN(q.v1)")]
                      {:sql (format "SELECT q.x AS x, %s AS v1 FROM %s AS q GROUP BY q.x" agg (:sql q)) :n 1})))
         :inv   (let [r (one! :inv (sub schema a params))]
                  {:sql (format "SELECT r.v1 AS x, r.x AS v1 FROM %s AS r" (:sql r)) :n 1})

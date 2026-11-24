@@ -10,6 +10,7 @@
 (defn group [r t] [:group r t])
 (defn fold  [q agg] [:fold q agg])
 (defn filt  [r p] [:filt r p])   ; p is data: [:like "%Live%"]
+(defn gt    [r v] [:gt r v])
 
 ;; Extensions past Part 5, each in both interpreters (tarn.run, tarn.sql)
 (defn inv      [r]   [:inv r])
